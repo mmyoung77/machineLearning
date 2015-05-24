@@ -1,0 +1,106 @@
+---
+title: "Machine Learning Project"
+author: "Mark Young"
+date: "May 24, 2015"
+output: html_document
+---
+
+First, get the data, look at it, and create training and testing subsets for corss-validation.
+
+```{r}
+
+require(ggplot2)
+require(caret)
+set.seed(123)
+data <- read.csv("~/Documents/MachineLearning/pml-training.csv", na.strings=c("NA", "#DIV/0!"), stringsAsFactors = FALSE)
+
+summary(data)
+
+data$classe <- as.factor(data$classe)
+data_NA <- data[,colSums(is.na(data)) < 1000]
+clean_data <- data_NA[,8:60]
+
+summary(clean_data)
+
+inTrain <- createDataPartition(y=clean_data$classe, p=0.6, list=FALSE)
+training <- clean_data[inTrain,]
+testing <- clean_data[-inTrain,]
+
+```
+
+The most useful sensors for predicting in an app world are on the arm (either a watch, or a strapped-on phone, or both). So plot those first.
+
+```{r, echo=FALSE}
+qplot(pitch_arm, roll_arm, color=classe, data=training)
+```
+
+There's a definite pattern amongst the classes, similar to how the wage data from the class notes grouped together. But, it is a complicated, non-linear relationship. So the plan is to try the two nonlinear models that worked best for the wage data: random forests and boosting with gbm. In each case, they are being cross-validated with the bootstrap.
+
+```{r}
+### Try A: Random forest
+
+modFitA <- train(classe ~ ., data=training, method="rf", prox=TRUE)
+x <- modFitA
+
+predA <- predict(modFitA, testing); testing$predARight <- predA==testing$classe
+A <- table(predA, testing$classe)
+
+A
+
+### Try B: Boosting
+
+modFitB <- train(classe ~ ., data=training, method="gbm", verbose=FALSE)
+modFitB
+
+predB <- predict(modFitB, testing); testing$predBRight <- predB==testing$classe
+B <- table(predB, testing$classe)
+
+B
+
+```
+
+Both demonstrate a high level of accuracy on the testing sub-set. Compare the out-of-sample error on the two, to find the better one:
+
+```{r}
+
+accuracyA <- sum(diag(A))/sum(A); accuracyB <- sum(diag(B))/sum(B)
+accuracyA
+accuracyB
+
+```
+
+Using random forests gives the more accurate prediction. 
+Now attempt the model on the problem set data.
+
+```{r}
+
+probset <- read.csv("~/Documents/MachineLearning/pml-testing.csv", na.strings=c("NA", "#DIV/0!"), stringsAsFactors = FALSE)
+prob_NA <- probset[,colSums(is.na(probset)) < 20]
+
+clean_prob <- prob_NA[,8:60]
+
+case <- probset$problem_id
+prediction <- predict(modFitA, clean_prob[, -53])
+answers <- data.frame(case, prediction)
+answers
+
+```
+
+Finally, the code for submitting answers for grading, as provided in the instructions.
+
+```{r}
+
+answerSet <- prediction
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+setwd("~/Documents/MachineLearning/")
+
+pml_write_files(answerSet)
+```
